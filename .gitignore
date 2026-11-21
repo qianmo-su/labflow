@@ -1,0 +1,10 @@
+/target/
+/data/
+/dist/
+.env
+.env.*
+*.log
+*.mv.db
+*.trace.db
+.idea/
+*.iml

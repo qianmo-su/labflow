@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#153f34">
+<title>知序 LabFlow · 实验室预约平台</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/assets/app.css">
+<script defer src="/assets/vue.global.prod.js"></script><script defer src="/assets/lucide.min.js"></script><script defer src="/assets/app.js"></script></head>
+<body><div id="app" v-cloak>
+<header class="mast"><div class="wrap top">
+ <div class="brand"><span class="mark"><ico n="FlaskConical"></ico></span><b>知序</b><span>LabFlow</span></div>
+ <nav aria-label="主导航"><button v-for="t in tabs" :key="t.id" @click="go(t.id)" :class="{on:view===t.id}"><ico :n="t.icon"></ico>{{t.label}}</button></nav>
+ <button class="identity" @click="openLogin"><span class="avatar">{{session.user?session.name.slice(0,1):'访'}}</span>{{session.user?session.name:'登录平台'}}<ico n="ChevronDown"></ico></button>
+</div></header>
+<main class="wrap">
+ <div class="crumb"><span class="live"></span> 校园实验中心 <span>/</span> {{viewLabel}}</div>
+ <section class="intro"><div><div class="eyebrow">{{sectionCode}}</div><h1>{{viewLabel}}</h1><p>{{subtitle}}</p></div>
+ <div class="intro-actions"><button v-if="view==='calendar' && session.role!=='ADMIN' && session.role!=='TEACHER'" class="primary" @click="startBooking()"><ico n="Plus"></ico>新建预约</button>
+ <button v-if="view==='rooms'" class="primary" @click="roomDialog()"><ico n="Plus"></ico>新增实验室</button>
+ <button v-if="view==='calendar' && session.role==='ADMIN'" class="primary" @click="blockDialog()"><ico n="Wrench"></ico>设置检修</button></div></section>
+
+ <template v-if="view==='calendar'">
+ <div class="workspace"><aside class="side">
+  <h2><ico n="Layers"></ico>实验室目录 <small>{{rooms.length}}</small></h2>
+  <button class="room" v-for="(r,i) in rooms" :key="r.id" :class="{chosen:r.id===roomId}" @click="chooseRoom(r.id)">
+    <span class="room-icon"><ico :n="['Cpu','Network','CircuitBoard'][i%3]"></ico></span>
+    <span><strong>{{r.name}}</strong><small>{{r.location}} · {{r.seats}} 座</small></span></button>
+  <div v-if="room" class="roominfo"><span class="eyebrow">ROOM PROFILE</span><h3>{{room.name}}</h3>
+  <div class="facts"><span>开放节次</span><b>第 {{room.firstPeriod}} 至 {{room.lastPeriod}} 节</b><span>容纳人数</span><b>{{room.seats}} 人</b></div>
+  <svg class="floor" viewBox="0 0 214 86" role="img" aria-label="实验室座位容量示意图"><rect x="5" y="4" width="204" height="78" rx="2" fill="#f4f8f5" stroke="#9bb3a7" stroke-dasharray="4 3"/><rect x="76" y="10" width="62" height="5" fill="#4f7464"/><g v-for="i in Math.min(room.seats,48)" :key="i"><rect :x="17+((i-1)%12)*15.4" :y="23+Math.floor((i-1)/12)*13" width="9" height="6" rx="1" fill="#89aa99"/></g></svg><small class="caption">座位容量示意</small></div>
+ </aside>
+ <section class="board" aria-label="实验室周课表"><div class="boardhead"><div><span class="eyebrow">WEEKLY SCHEDULE</span><h2>{{rangeLabel}}</h2></div>
+ <div class="weeknav"><button class="icon" title="上一周" aria-label="上一周" @click="shift(-7)"><ico n="ChevronLeft"></ico></button><button class="plain" @click="setWeek(defaultWeek)">预约周</button><button class="icon" title="下一周" aria-label="下一周" @click="shift(7)"><ico n="ChevronRight"></ico></button></div></div>
+ <div class="legend"><span><i class="free"></i>可申请 {{summary.free}}</span><span><i class="reserved"></i>已预约 {{summary.reserved}}</span><span><i class="maintenance"></i>检修 {{summary.maintenance}}</span><span><i class="closed"></i>未开放</span></div>
+ <div class="scroll"><table class="calendar"><thead><tr><th>节次</th><th v-for="(d,i) in days"><b>周{{'一二三四五六日'[i]}}</b><small>{{d.slice(5).replace('-','/')}}</small></th></tr></thead>
+ <tbody><tr v-for="p in 8"><th><b>{{String(p).padStart(2,'0')}}</b><small>{{times[p-1]}}</small></th>
+ <td v-for="d in days"><button :class="'cell '+cell(d,p).type" :data-slot="d+'-'+p" @click="pick(d,p)" :aria-label="`${d} 第${p}节 ${cell(d,p).label}`">{{cell(d,p).label}}</button></td></tr></tbody></table></div>
+ </section></div></template>
+
+ <template v-if="view==='requests'"><div class="listbar"><div class="filters"><button v-for="f in ['ALL','PENDING','APPROVED','REJECTED','CANCELLED']" :class="{active:filter===f}" @click="filter=f">{{states[f]}}</button></div><span>{{filtered.length}} 笔</span></div>
+ <div class="scroll"><table class="normal"><thead><tr><th>申请 / 用途</th><th>实验室</th><th>日期与节次</th><th>申请人</th><th>状态</th><th>操作</th></tr></thead>
+ <tbody><tr v-for="b in filtered" :key="b.id"><td><b>{{b.purpose}}</b><small>#{{String(b.id).padStart(4,'0')}}</small></td><td>{{roomName(b.labId)}}</td><td>{{b.day}}<small>第 {{b.firstPeriod}} 至 {{b.lastPeriod}} 节</small></td><td>{{names[b.owner]||b.owner}}</td><td><span :class="'pill '+b.state">{{states[b.state]}}</span></td><td><button class="textbtn" @click="reviewDialog(b)">{{session.role==='TEACHER'&&b.state==='PENDING'?'审批':'详情'}} <ico n="ArrowUpRight"></ico></button></td></tr>
+ <tr v-if="!filtered.length"><td colspan="6" class="empty">暂无符合条件的申请</td></tr></tbody></table></div></template>
+
+ <template v-if="view==='rooms'"><div class="scroll"><table class="normal"><thead><tr><th>实验室名称</th><th>位置</th><th>容量</th><th>每日开放节次</th><th>操作</th></tr></thead>
+ <tbody><tr v-for="r in rooms"><td><b>{{r.name}}</b></td><td>{{r.location}}</td><td>{{r.seats}} 座</td><td>第 {{r.firstPeriod}} 至 {{r.lastPeriod}} 节</td><td><button class="textbtn" @click="roomDialog(r)">编辑</button> · <button class="textbtn" @click="blockDialog(r)">检修</button></td></tr></tbody></table></div></template>
+
+ <template v-if="view==='stats'"><div class="boardhead"><h2>{{rangeLabel}}</h2><div class="weeknav"><button class="icon" aria-label="上一周" @click="shift(-7)"><ico n="ChevronLeft"></ico></button><button class="plain" @click="setWeek(defaultWeek)">预约周</button><button class="icon" aria-label="下一周" @click="shift(7)"><ico n="ChevronRight"></ico></button></div></div>
+ <div class="scroll"><table class="normal"><thead><tr><th>实验室</th><th>已预约节次</th><th>检修节次</th><th>可排容量</th><th>预约使用率</th><th>热门节次（含并列）</th></tr></thead><tbody><tr v-for="r in stats"><td><b>{{r.name}}</b></td><td>{{r.reserved}}</td><td>{{r.maintenance}}</td><td>{{r.capacity}}</td><td><div class="meter"><i :style="{width:r.utilization+'%'}"></i></div>{{r.utilization}}%</td><td>{{r.peak.length?'第 '+r.peak.join('、')+' 节':'暂无'}}</td></tr></tbody></table></div></template>
+ <footer><span>知序 LabFlow</span>校园实验中心 · 预约与审批</footer>
+</main>
+<div v-if="modal" class="overlay" @click.self="dismiss" @keydown.esc="dismiss">
+<section role="dialog" aria-modal="true" :aria-label="dialogTitle" class="dialog"><div class="dlghead"><div><span class="eyebrow">LABFLOW / {{modal.toUpperCase()}}</span><h2>{{dialogTitle}}</h2></div><button class="icon" title="关闭" aria-label="关闭" @click="dismiss"><ico n="X"></ico></button></div>
+<form @submit.prevent="submit">
+<template v-if="modal==='login'"><label>演示身份<select v-model="form.account" @change="form.password='LabDemo123'"><option v-for="(n,k) in names" :value="k">{{n}} · {{k}}</option></select></label><label>密码<input type="password" v-model="form.password" required autocomplete="current-password"></label></template>
+<template v-if="modal==='apply'||modal==='block'"><label>实验室<select v-model.number="form.labId"><option v-for="r in rooms" :value="r.id">{{r.name}}</option></select></label>
+<label>使用日期<input type="date" v-model="form.day" :min="session.today" :max="plus(session.today,90)" required></label><div class="pair"><label>起始节次<select v-model.number="form.firstPeriod" @change="form.lastPeriod=Math.max(form.firstPeriod,form.lastPeriod)"><option v-for="p in 8" :value="p">第 {{p}} 节</option></select></label><label>结束节次<select v-model.number="form.lastPeriod"><option v-for="p in 8" :value="p" :disabled="p<form.firstPeriod">第 {{p}} 节</option></select></label></div>
+<label v-if="modal==='apply'">实验用途<textarea v-model.trim="form.purpose" maxlength="160" required placeholder="填写实验名称与使用目的"></textarea></label>
+<template v-else><label>操作<select v-model="form.mode"><option value="block">设置检修</option><option value="release">解除检修</option></select></label><label v-if="form.mode==='block'">检修原因<input v-model.trim="form.note" required maxlength="100"></label></template></template>
+<template v-if="modal==='room'"><label>实验室名称<input v-model.trim="form.name" required maxlength="60"></label><label>位置<input v-model.trim="form.location" required maxlength="80"></label><label>座位数<input v-model.number="form.seats" type="number" min="1" max="500" required></label><div class="pair"><label>开放起始节次<input type="number" min="1" max="8" v-model.number="form.firstPeriod" required></label><label>开放结束节次<input type="number" min="1" max="8" v-model.number="form.lastPeriod" required></label></div></template>
+<template v-if="modal==='review'"><h3>{{current.purpose}}</h3><dl><dt>申请人</dt><dd>{{names[current.owner]}}</dd><dt>实验室</dt><dd>{{roomName(current.labId)}}</dd><dt>时间</dt><dd>{{current.day}} · 第 {{current.firstPeriod}} 至 {{current.lastPeriod}} 节</dd><dt>状态</dt><dd>{{states[current.state]}}</dd><dt v-if="current.reviewer">审批人</dt><dd v-if="current.reviewer">{{names[current.reviewer]}}</dd><dt v-if="current.opinion">意见</dt><dd v-if="current.opinion">{{current.opinion}}</dd></dl>
+<template v-if="canReview"><label>审批决定<select v-model="form.decision"><option value="yes">批准预约</option><option value="no">驳回申请</option></select></label><label>审批意见<textarea v-model="form.opinion" maxlength="160" :required="form.decision==='no'"></textarea></label></template></template>
+<p v-if="error" class="err" role="alert">{{error}}</p>
+<div class="dlgfoot"><button type="button" class="plain" @click="dismiss">关闭</button><button v-if="modal==='login'&&session.user" type="button" class="plain" @click="signout">退出登录</button><button class="primary" v-if="actionLabel" :disabled="busy">{{busy?'提交中…':actionLabel}}</button></div>
+</form></section></div>
+<div class="toast" role="status" v-if="toast">{{toast}}</div>
+</div></body></html>
